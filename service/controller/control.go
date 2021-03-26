@@ -135,9 +135,9 @@ func (c *Controller) AddInboundLimiter(tag string, nodeSpeedLimit uint64, userLi
 	return err
 }
 
-func (c *Controller) UpdateInboundLimiter(tag string, nodeSpeedLimit uint64, updatedUserList *[]api.UserInfo) error {
+func (c *Controller) UpdateInboundLimiter(tag string, updatedUserList *[]api.UserInfo) error {
 	dispather := c.server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher)
-	err := dispather.Limiter.UpdateInboundLimiter(tag, nodeSpeedLimit, updatedUserList)
+	err := dispather.Limiter.UpdateInboundLimiter(tag, updatedUserList)
 	return err
 }
 
@@ -150,4 +150,15 @@ func (c *Controller) DeleteInboundLimiter(tag string) error {
 func (c *Controller) GetOnlineDevice(tag string) (*[]api.OnlineUser, error) {
 	dispather := c.server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher)
 	return dispather.Limiter.GetOnlineDevice(tag)
+}
+
+func (c *Controller) UpdateRule(tag string, newRuleList []api.DetectRule) error {
+	dispather := c.server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher)
+	err := dispather.RuleManager.UpdateRule(tag, newRuleList)
+	return err
+}
+
+func (c *Controller) GetDetectResult(tag string) (*[]api.DetectResult, error) {
+	dispather := c.server.GetFeature(routing.DispatcherType()).(*mydispatcher.DefaultDispatcher)
+	return dispather.RuleManager.GetDetectResult(tag)
 }

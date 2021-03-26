@@ -24,27 +24,32 @@ var (
 
 // APIClient create a api client to the panel.
 type APIClient struct {
-	client   *resty.Client
-	APIHost  string
-	NodeID   int
-	Key      string
-	NodeType string
+	client      *resty.Client
+	APIHost     string
+	NodeID      int
+	Key         string
+	NodeType    string
+	EnableVless bool
+	EnableXTLS  bool
 }
 
 // New creat a api instance
 func New(apiConfig *api.Config) *APIClient {
 
 	client := resty.New()
+	client.SetRetryCount(3)
 	client.SetTimeout(5 * time.Second)
 	client.SetHostURL(apiConfig.APIHost)
 	// Create Key for each requests
 	client.SetQueryParam("key", apiConfig.Key)
 	apiClient := &APIClient{
-		client:   client,
-		NodeID:   apiConfig.NodeID,
-		Key:      apiConfig.Key,
-		APIHost:  apiConfig.APIHost,
-		NodeType: apiConfig.NodeType,
+		client:      client,
+		NodeID:      apiConfig.NodeID,
+		Key:         apiConfig.Key,
+		APIHost:     apiConfig.APIHost,
+		NodeType:    apiConfig.NodeType,
+		EnableVless: apiConfig.EnableVless,
+		EnableXTLS:  apiConfig.EnableXTLS,
 	}
 	return apiClient
 }
@@ -99,15 +104,12 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 	if err := json.Unmarshal(response.Data, nodeInfoResponse); err != nil {
 		return nil, fmt.Errorf("Unmarshal %s failed: %s", reflect.TypeOf(nodeInfoResponse), err)
 	}
-	switch nodeInfoResponse.Sort {
-	case 11:
-		c.NodeType = "V2ray"
+	switch c.NodeType {
+	case "V2ray":
 		nodeInfo, err = c.ParseV2rayNodeResponse(nodeInfoResponse)
-	case 14:
-		c.NodeType = "Trojan"
+	case "Trojan":
 		nodeInfo, err = c.ParseTrojanNodeResponse(nodeInfoResponse)
-	case 0:
-		c.NodeType = "Shadowsocks"
+	case "Shadowsocks":
 		nodeInfo, err = c.ParseSSNodeResponse(nodeInfoResponse)
 	default:
 		return nil, fmt.Errorf("Unsupported Node type: %s", c.NodeType)
@@ -217,9 +219,60 @@ func (c *APIClient) ReportUserTraffic(userTraffic *[]api.UserTraffic) error {
 	return nil
 }
 
+// GetNodeRule will pull the audit rule form sspanel
+func (c *APIClient) GetNodeRule() (*[]api.DetectRule, error) {
+	path := "mod_mu/func/detect_rules"
+	res, err := c.client.R().
+		SetResult(&Response{}).
+		ForceContentType("application/json").
+		Get(path)
+
+	response, err := c.parseResponse(res, path, err)
+
+	ruleListResponse := new([]RuleItem)
+
+	if err := json.Unmarshal(response.Data, ruleListResponse); err != nil {
+		return nil, fmt.Errorf("Unmarshal %s failed: %s", reflect.TypeOf(ruleListResponse), err)
+	}
+	ruleList := make([]api.DetectRule, len(*ruleListResponse))
+	for i, r := range *ruleListResponse {
+		ruleList[i] = api.DetectRule{
+			ID:      r.ID,
+			Pattern: r.Content,
+		}
+	}
+	return &ruleList, nil
+}
+
+// ReportIllegal reports the user illegal behaviors
+func (c *APIClient) ReportIllegal(detectResultList *[]api.DetectResult) error {
+
+	data := make([]IllegalItem, len(*detectResultList))
+	for i, r := range *detectResultList {
+		data[i] = IllegalItem{
+			ID:  r.RuleID,
+			UID: r.UID,
+		}
+	}
+	postData := &PostData{Data: data}
+	path := "/mod_mu/users/detectlog"
+	res, err := c.client.R().
+		SetQueryParam("node_id", strconv.Itoa(c.NodeID)).
+		SetBody(postData).
+		SetResult(&Response{}).
+		ForceContentType("application/json").
+		Post(path)
+	_, err = c.parseResponse(res, path, err)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // ParseV2rayNodeResponse parse the response for the given nodeinfor format
 func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (*api.NodeInfo, error) {
 	var enableTLS, enableVless bool
+	enableVless = c.EnableVless
 	var path, host string
 	if nodeInfoResponse.RawServerString == "" {
 		return nil, fmt.Errorf("No server info in response")
@@ -263,8 +316,6 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 			{
 				if value == "true" {
 					enableVless = true
-				} else {
-					enableVless = false
 				}
 			}
 		}

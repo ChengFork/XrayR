@@ -28,7 +28,7 @@ A Xray backend framework that can easily support many panels.
 ## TODO
 - [x] 在线用户统计和限制
 - [x] 限速实现
-- [ ] 审计规则
+- [x] 审计规则
 - [ ] 对接ProxyPanel
 - [ ] 对接v2board
 
@@ -44,7 +44,7 @@ A Xray backend framework that can easily support many panels.
 | 自动续签tls证书 | √     | √      | √           |
 | 在线人数统计    | √     | √      | √           |
 | 在线用户限制    | √     | √      | √           |
-| 审计规则        | TODO  | TODO   | TODO        |
+| 审计规则        | √     | √      | √           |
 | 节点端口限速    | √     | √      | √           |
 | 按照用户限速    | √     | √      | √           |
 
@@ -73,8 +73,11 @@ A Xray backend framework that can easily support many panels.
 
 [XrayR通知](https://t.me/XrayR_channel)
 
+# 一键安装
+```
+bash <(curl -Ls https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh)
+```
 ## 使用Docker部署软件
-
 [Docker部署教程](https://github.com/XrayR-project/XrayR-release/blob/master/README.md)
 
 ## 下载并使用
@@ -109,7 +112,10 @@ Nodes:
       ApiKey: "123"
       NodeID: 41
       NodeType: V2ray # Node type: V2ray, Shadowsocks, Trojan
+      EnableVless: false # Enable Vless for V2ray Type, Prefer remote configuration
+      EnableXTLS: false # Enable XTLS for V2ray and Trojan， Prefer remote configuration
     ControllerConfig:
+      ListenIP: 0.0.0.0 # IP address you want to listen
       UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
       CertConfig:
         CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
@@ -121,18 +127,42 @@ Nodes:
         DNSEnv: # DNS ENV option used by DNS provider
           ALICLOUD_ACCESS_KEY: aaa
           ALICLOUD_SECRET_KEY: bbb
+  -
+    PanelType: "SSpanel" # Panel type: SSpanel
+    ApiConfig:
+      ApiHost: "http://sspanel.com"
+      ApiKey: "123"
+      NodeID: 42
+      NodeType: Trojan # Node type: V2ray, Shadowsocks, Trojan
+      EnableVless: false # Enable Vless for V2ray Type, Prefer remote configuration
+      EnableXTLS: false # Enable XTLS for V2ray and Trojan， Prefer remote configuration
+    ControllerConfig:
+      ListenIP: 0.0.0.0 # IP address you want to listen
+      UpdatePeriodic: 60 # Time to update the nodeinfo, how many sec.
+      CertConfig:
+        CertMode: dns # Option about how to get certificate: none, file, http, dns. Choose "none" will forcedly disable the tls config.
+        CertDomain: "node2.test.com" # Domain to cert
+        CertFile: ./cert/node2.test.com.cert # Provided if the CertMode is file
+        KeyFile: ./cert/node2.test.com.key
+        Provider: alidns # DNS cert provider, Get the full support list here: https://go-acme.github.io/lego/dns/
+        Email: test@me.com
+        DNSEnv: # DNS ENV option used by DNS provider
+          ALICLOUD_ACCESS_KEY: aaa
+          ALICLOUD_SECRET_KEY: bbb
 ```
 ## 前端配置
 ### 限速说明
 1. 节点限速：请在SSpanel的节点限速处填写，单位mbps。
 2. 用户限速：请在SSpanel的用户设置处填写，单位mbps。
 3. 限速值设为0，则为不限速。
+### 审计规则说明
+请在前端审计规则处填写任意正则表达式，如 `baidu.com`将屏蔽所有baidu的域名。暂不支持bt协议的审计。
 ### V2ray
 
 | 协议      | 支持情况                                             |
 | --------- | ---------------------------------------------------- |
-| VMess     | tcp, tcp+tls/xtls, ws, ws+tls/xtls, h2c, h2+tls/xtls |
-| VMessAEAD | tcp, tcp+tls/xtls, ws, ws+tls/xtls, h2c, h2+tls/xtls |
+| VMess     | tcp, tcp+tls, ws, ws+tls, h2c, h2+tls                |
+| VMessAEAD | tcp, tcp+tls, ws, ws+tls, h2c, h2+tls                |
 | VLess     | tcp, tcp+tls/xtls, ws, ws+tls/xtls, h2c, h2+tls/xtls |
 #### SSpanel-uim 节点地址格式
 ```
