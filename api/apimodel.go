@@ -8,6 +8,7 @@ type Config struct {
 	NodeType    string `mapstructure:"NodeType"`
 	EnableVless bool   `mapstructure:"EnableVless"`
 	EnableXTLS  bool   `mapstructure:"EnableXTLS"`
+	Timeout     int    `mapstructure:"Timeout"`
 }
 
 // Node status
@@ -30,6 +31,7 @@ type NodeInfo struct {
 	EnableTLS         bool
 	TLSType           string
 	EnableVless       bool
+	CypherMethod      string
 }
 
 type UserInfo struct {
@@ -45,6 +47,7 @@ type UserInfo struct {
 	Obfs          string
 	ObfsParam     string
 	UUID          string
+	AlterID       int
 }
 
 type OnlineUser struct {

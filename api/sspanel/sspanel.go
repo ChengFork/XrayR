@@ -3,6 +3,7 @@ package sspanel
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -38,7 +39,18 @@ func New(apiConfig *api.Config) *APIClient {
 
 	client := resty.New()
 	client.SetRetryCount(3)
-	client.SetTimeout(5 * time.Second)
+	if apiConfig.Timeout > 0 {
+		client.SetTimeout(time.Duration(apiConfig.Timeout) * time.Second)
+	} else {
+		client.SetTimeout(5 * time.Second)
+	}
+	client.OnError(func(req *resty.Request, err error) {
+		if v, ok := err.(*resty.ResponseError); ok {
+			// v.Response contains the last response from the server
+			// v.Err contains the original error
+			log.Print(v.Err)
+		}
+	})
 	client.SetHostURL(apiConfig.APIHost)
 	// Create Key for each requests
 	client.SetQueryParam("key", apiConfig.Key)
@@ -221,7 +233,7 @@ func (c *APIClient) ReportUserTraffic(userTraffic *[]api.UserTraffic) error {
 
 // GetNodeRule will pull the audit rule form sspanel
 func (c *APIClient) GetNodeRule() (*[]api.DetectRule, error) {
-	path := "mod_mu/func/detect_rules"
+	path := "/mod_mu/func/detect_rules"
 	res, err := c.client.R().
 		SetResult(&Response{}).
 		ForceContentType("application/json").
@@ -273,7 +285,7 @@ func (c *APIClient) ReportIllegal(detectResultList *[]api.DetectResult) error {
 func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (*api.NodeInfo, error) {
 	var enableTLS, enableVless bool
 	enableVless = c.EnableVless
-	var path, host string
+	var path, host, TLStype, transportProtocol string
 	if nodeInfoResponse.RawServerString == "" {
 		return nil, fmt.Errorf("No server info in response")
 	}
@@ -287,16 +299,18 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	if err != nil {
 		return nil, err
 	}
-
-	transportProtocol := serverConf[3]
-
-	TLStype := serverConf[4]
-	if TLStype == "tls" || TLStype == "xtls" {
-		enableTLS = true
-	} else {
-		enableTLS = false
+	// Compatible with more node types config
+	for _, value := range serverConf[3:5] {
+		switch value {
+		case "tls", "xtls":
+			TLStype = value
+			enableTLS = true
+		default:
+			if value != "" {
+				transportProtocol = value
+			}
+		}
 	}
-
 	extraServerConf := strings.Split(serverConf[5], "|")
 
 	for _, item := range extraServerConf {
@@ -341,16 +355,35 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 
 // ParseSSNodeResponse parse the response for the given nodeinfor format
 func (c *APIClient) ParseSSNodeResponse(nodeInfoResponse *NodeInfoResponse) (*api.NodeInfo, error) {
+	var port int = 0
+	var method string
+	path := "/mod_mu/users"
+	res, err := c.client.R().
+		SetQueryParam("node_id", strconv.Itoa(c.NodeID)).
+		SetResult(&Response{}).
+		ForceContentType("application/json").
+		Get(path)
 
-	if nodeInfoResponse.RawServerString == "" {
-		return nil, fmt.Errorf("No server info in response")
+	response, err := c.parseResponse(res, path, err)
+
+	userListResponse := new([]UserResponse)
+
+	if err := json.Unmarshal(response.Data, userListResponse); err != nil {
+		return nil, fmt.Errorf("Unmarshal %s failed: %s", reflect.TypeOf(userListResponse), err)
 	}
-	//nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
-	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
-	port, err := strconv.Atoi(serverConf[1])
-	if err != nil {
-		return nil, err
+	// Find the multi-user
+	for _, u := range *userListResponse {
+		if u.MultiUser > 0 {
+			port = u.Port
+			method = u.Method
+			break
+		}
 	}
+
+	if port == 0 || method == "" {
+		return nil, fmt.Errorf("Cant find the single port multi user")
+	}
+
 	speedlimit := (nodeInfoResponse.SpeedLimit * 1000000) / 8
 	// Create GeneralNodeInfo
 	nodeinfo := &api.NodeInfo{
@@ -359,6 +392,7 @@ func (c *APIClient) ParseSSNodeResponse(nodeInfoResponse *NodeInfoResponse) (*ap
 		Port:              port,
 		SpeedLimit:        speedlimit,
 		TransportProtocol: "tcp",
+		CypherMethod:      method,
 	}
 
 	return nodeinfo, nil
